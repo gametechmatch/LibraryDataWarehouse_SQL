@@ -1,0 +1,559 @@
+/*
+CreateAndFillDataWarehouse_LibraryDW
+
+Author: Lily Zimmermann
+Created: Fall 2022
+Notes:
+This file creates and fills the entities for a Library Data Warehouse
+*/
+
+/*Create & Fill Calendar Table*/
+/*SOURCE: https://stackoverflow.com/questions/1201874/calendar-table-for-data-warehouse*/
+/*Create Calendar Table*/
+Create Table dbo.Calendar
+(
+	CalendarKey BIGINT NOT NULL IDENTITY,
+	FullDate DATE NOT NULL,
+	DayOfWeek CHAR(15) NOT NULL,
+	DayOfMonth INT NOT NULL,
+	Week INT NOT NULL,
+	Month CHAR(10) NOT NULL,
+	Quarter CHAR(2),
+	Year INT NOT NULL,
+	PRIMARY KEY(CalendarKey),
+)
+
+/*Fill Calendar Table*/
+Declare @StartDate  DateTime = '2020-01-01'
+Declare @EndDate    DateTime = '2023-01-01'
+
+While @StartDate < @EndDate
+Begin
+    INSERT INTO dbo.Calendar 
+    (
+		FullDate,
+		DayOfWeek,
+		DayOfMonth,
+		Week,
+		Month,
+		Quarter,
+		Year
+    )
+    Values 
+    (
+        @StartDate,                 -- full date
+        DATEPART (dw, @StartDate),  -- Day of week
+        DATEPART (dd, @StartDate),  -- day of month
+        DATENAME (wk, @StartDate),  -- week
+        DATENAME (mm, @StartDate),   -- month
+        DATEPART (qq, @StartDate),   -- quarter
+		DATEPART (yy, @StartDate)   -- year
+    )
+
+	Set @StartDate += 1
+End
+/*Create Tables*/
+/*Create Item Table*/
+CREATE TABLE Item (
+ItemKey BIGINT NOT NULL IDENTITY,
+ItemID NVARCHAR(100) NULL,
+ItemName NVARCHAR (150) NULL,
+ItemAmazonID NVARCHAR(100) NULL,
+ItemLibbyID NVARCHAR(100) NULL,
+PRIMARY KEY(ItemKey),
+);
+
+/*Create Transaction Type Table*/
+CREATE TABLE TransactionType (
+TransactionTypeKey BIGINT NOT NULL IDENTITY,
+TransactionTypeID NCHAR(9) NOT NULL,
+TransactionTypeDescription NVARCHAR(50) NULL,
+TransactionTypePaymentInvolved BIT NULL,
+TransactionTypeFee BIT NULL,
+TransactionTypeReservation BIT NULL,
+PRIMARY KEY(TransactionTypeKey),
+);
+
+/*Create User table*/
+CREATE TABLE "User"(
+UserKey BIGINT NOT NULL IDENTITY,
+UserID NVARCHAR(100) NOT NULL,
+UserPassword NVARCHAR(30) NULL,
+UserFirstName NVARCHAR(70) NULL,
+UserLastName NVARCHAR(70) NULL,
+UserDOB DATE NULL,
+UserEmail NVARCHAR(100) NULL,
+UserEmailTwo NVARCHAR(100) NULL,
+UserPhone NCHAR(10) NULL,
+UserPhoneTwo NCHAR(10) NULL,
+UserStreetAddress NVARCHAR(150) NULL,
+UserStreetAddressTwo NVARCHAR(150) NULL,
+UserAptNo NVARCHAR(50) NULL,
+UserCity NVARCHAR(100) NULL,
+UserZipCode INT NULL,
+UserAmazonID NVARCHAR(100) NULL,
+UserLibbyID NVARCHAR(100) NULL,
+PRIMARY KEY(UserKey),
+CHECK (UserZipCode >= 0 AND UserZipCode <= 99999),
+);
+
+/*Create Receipt Table*/
+CREATE TABLE Receipt (
+ReceiptKey BIGINT NOT NULL IDENTITY,
+ReceiptID NVARCHAR(100) NOT NULL,
+ReceiptDateTime DATETIME NULL,
+ReceiptTotalDue SMALLMONEY NULL,
+UserKey BIGINT NOT NULL,
+PRIMARY KEY(ReceiptKey),
+CONSTRAINT FK_R_UK FOREIGN KEY(UserKey) REFERENCES "User"(UserKey),
+);
+
+/*Create Receipt Transaction Table*/
+CREATE TABLE ReceiptTransaction (
+ReceiptTransactionKey BIGINT NOT NULL IDENTITY,
+ReceiptTransactionID NVARCHAR(100) NOT NULL,
+TransactionTypeKey BIGINT NOT NULL,
+ItemKey BIGINT NOT NULL,
+ReceiptTransactionItemQuantity INT NULL,
+ReceiptTransactionTotalCharge SMALLMONEY NULL,
+ReceiptKey BIGINT NOT NULL,
+PRIMARY KEY(ReceiptTransactionKey),
+CONSTRAINT FK_RT_TTK FOREIGN KEY(TransactionTypeKey) REFERENCES TransactionType(TransactionTypeKey),
+CONSTRAINT FK_RT_IK FOREIGN KEY(ItemKey) REFERENCES Item(ItemKey),
+CONSTRAINT FK_RT_RK FOREIGN KEY(ReceiptKey) REFERENCES Receipt(ReceiptKey),
+);
+
+/*Create Reservation Detail Table*/
+CREATE TABLE ReservationDetail (
+ReservationDetailKey BIGINT NOT NULL IDENTITY,
+ReservationDetailID NVARCHAR(100) NOT NULL,
+ReceiptTransactionKey BIGINT NOT NULL,
+ReservationDetailDate DATE NULL,
+ReservationDetailStartTime TIME(7) NULL,
+ReservationDetailEndTime TIME(7) NULL,
+PRIMARY KEY(ReservationDetailKey),
+CONSTRAINT FK_RSD_RTK FOREIGN KEY(ReceiptTransactionKey) REFERENCES ReceiptTransaction(ReceiptTransactionKey),
+);
+
+/*Create Room Detail Table*/
+CREATE TABLE RoomDetail(
+RoomDetailKey BIGINT NOT NULL IDENTITY,
+RoomDetailID INT NOT NULL,
+ItemKey BIGINT NOT NULL,
+RoomDetailRoomFloor TINYINT NULL,
+RoomDetailRoomNumber TINYINT NULL,
+RoomDetailTotalPhones TINYINT NULL,
+RoomDetailTotalComputers TINYINT NULL,
+RoomDetailTotalTables TINYINT NULL,
+RoomDetailTotalChairs SMALLINT NULL,
+RoomDetailMaxCapacity SMALLINT NULL,
+RoomDetailCostPerMinute SMALLMONEY NULL,
+RoomDetailMaxReservationMinutes SMALLINT NULL,
+PRIMARY KEY(RoomDetailKey),
+CONSTRAINT FK_RD_IK FOREIGN KEY(ItemKey) REFERENCES Item(ItemKey),
+);
+
+/*Create TotalUserFeesByMonth Fact Table*/
+CREATE TABLE TotalUserFeesByMonth(
+TotalUserFeesByMonthKey BIGINT NOT NULL IDENTITY,
+UserKey BIGINT NOT NULL,
+"Month" CHAR(10) NOT NULL,
+Year SMALLINT NOT NULL,
+TotalFees MONEY NOT NULL,
+PRIMARY KEY(TotalUserFeesByMonthKey),
+CONSTRAINT FK_TUFM_UK FOREIGN KEY(UserKey) REFERENCES "User"(UserKey),
+);
+
+/*Create TotalRoomReservationsByRoomByWeek Fact Table*/
+CREATE TABLE TotalRoomReservationsByRoomByWeek(
+TotalRoomReservationsByRoomByWeekKey BIGINT NOT NULL IDENTITY,
+Week INT NOT NULL,
+ItemKey BIGINT NOT NULL,
+RoomDetailKey BIGINT NOT NULL,
+TotalRoomReservations INT NOT NULL,
+PRIMARY KEY(TotalRoomReservationsByRoomByWeekKey),
+CONSTRAINT FK_TRRW_IK FOREIGN KEY(ItemKey) REFERENCES Item(ItemKey),
+CONSTRAINT FK_TRRW_RDK FOREIGN KEY(RoomDetailKey) REFERENCES RoomDetail(RoomDetailKey),
+);
+
+/*Fill Data*/
+/*Insert Data into Item Table*/
+-- services
+INSERT INTO Item (ItemID, ItemName) VALUES(1, 'Black and White Copy');
+INSERT INTO Item (ItemID, ItemName) VALUES(2, 'Color Copy');
+INSERT INTO Item (ItemID, ItemName) VALUES(3, 'Black and White Print');
+INSERT INTO Item (ItemID, ItemName) VALUES(4, 'Color Print');
+INSERT INTO Item (ItemID, ItemName) VALUES(5, 'Photo Print');
+INSERT INTO Item (ItemID, ItemName) VALUES(6, 'Local Fax');
+INSERT INTO Item (ItemID, ItemName) VALUES(7, 'International Fax');
+INSERT INTO Item (ItemID, ItemName) VALUES(8, 'Local Call');
+INSERT INTO Item (ItemID, ItemName) VALUES(9, 'International Call');
+INSERT INTO Item (ItemID, ItemName) VALUES(10, 'Local Page');
+-- books
+INSERT INTO Item (ItemID, ItemName) VALUES(11, 'Harry Potter and the Prisoner of Azkaban');
+INSERT INTO Item (ItemID, ItemName) VALUES(12, 'Harry Potter and the Chamber of Secrets');
+INSERT INTO Item (ItemID, ItemName) VALUES(13, 'Harry Potter and the Sorcerer''s Stone');
+INSERT INTO Item (ItemID, ItemName) VALUES(14, 'Harry Potter and the Order of the Phoenix');
+INSERT INTO Item (ItemID, ItemName) VALUES(15, 'Harry Potter and the Golblet of Fire');
+INSERT INTO Item (ItemID, ItemName) VALUES(16, 'Harry Potter and the Half Blood Prince');
+INSERT INTO Item (ItemID, ItemName) VALUES(17, 'Harry Potter and the Deathly Hallows');
+INSERT INTO Item (ItemID, ItemName) VALUES(18, 'The Mist');
+INSERT INTO Item (ItemID, ItemName) VALUES(19, 'If it Bleeds');
+INSERT INTO Item (ItemID, ItemName, ItemLibbyID) VALUES(20, 'Fairy Tale', 'I-34262564563457');
+-- music
+INSERT INTO Item (ItemID, ItemName) VALUES(21, 'Is This It');
+INSERT INTO Item (ItemID, ItemName) VALUES(22, 'Room on Fire');
+INSERT INTO Item (ItemID, ItemName) VALUES(23, 'First Impressions of Earth');
+INSERT INTO Item (ItemID, ItemName) VALUES(24, 'Angles');
+INSERT INTO Item (ItemID, ItemName) VALUES(25, 'Comedown Machine');
+INSERT INTO Item (ItemID, ItemName) VALUES(26, 'The New Abnormal');
+INSERT INTO Item (ItemID, ItemName) VALUES(27, 'Enter the Wu-Tang');
+INSERT INTO Item (ItemID, ItemName) VALUES(28, 'Wu-Tang Forever');
+INSERT INTO Item (ItemID, ItemName) VALUES(29, 'The W');
+INSERT INTO Item (ItemID, ItemName) VALUES(30, 'Iron Flag');
+INSERT INTO Item (ItemID, ItemName) VALUES(31, '8 Diagrams');
+-- rooms
+INSERT INTO Item (ItemID, ItemName) VALUES(32, 'ROOM-001F-0001');
+INSERT INTO Item (ItemID, ItemName) VALUES(33, 'ROOM-001F-0002');
+INSERT INTO Item (ItemID, ItemName) VALUES(34, 'ROOM-001F-0003');
+INSERT INTO Item (ItemID, ItemName) VALUES(35, 'ROOM-001F-0004');
+INSERT INTO Item (ItemID, ItemName) VALUES(36, 'ROOM-002F-0001');
+INSERT INTO Item (ItemID, ItemName) VALUES(37, 'ROOM-002F-0002');
+INSERT INTO Item (ItemID, ItemName) VALUES(38, 'ROOM-002F-0003');
+INSERT INTO Item (ItemID, ItemName) VALUES(39, 'ROOM-002F-0004');
+INSERT INTO Item (ItemID, ItemName) VALUES(40, 'ROOM-003F-0001');
+INSERT INTO Item (ItemID, ItemName) VALUES(41, 'ROOM-003F-0002');
+-- tech
+INSERT INTO Item (ItemID, ItemName) VALUES(42, 'Optoma Projector');
+INSERT INTO Item (ItemID, ItemName) VALUES(43, 'Benq Projector');
+INSERT INTO Item (ItemID, ItemName) VALUES(44, 'Sony Projector');
+INSERT INTO Item (ItemID, ItemName) VALUES(45, 'Sony Audio Recorder');
+INSERT INTO Item (ItemID, ItemName) VALUES(46, 'Apple Laptop');
+INSERT INTO Item (ItemID, ItemName) VALUES(47, 'Asus Laptop');
+INSERT INTO Item (ItemID, ItemName) VALUES(48, 'Lenovo Laptop');
+INSERT INTO Item (ItemID, ItemName) VALUES(49, 'Apple Tablet');
+INSERT INTO Item (ItemID, ItemName) VALUES(50, 'Samsung Tablet');
+INSERT INTO Item (ItemID, ItemName) VALUES(51, 'Dell Tablet');
+
+/*Insert Data into Transaction Type Table*/
+INSERT INTO TransactionType VALUES('TTYPE-001','Loan', '0', '0', '0');
+INSERT INTO TransactionType VALUES('TTYPE-002','Purchase', '1', '0', '0');
+INSERT INTO TransactionType VALUES('TTYPE-003','Room Reservation', '0', '0', '1');
+INSERT INTO TransactionType VALUES('TTYPE-004','Tech Reservation', '0', '0', '1');
+INSERT INTO TransactionType VALUES('TTYPE-005','Service', '1', '0', '0');
+INSERT INTO TransactionType VALUES('TTYPE-006','Late Fee', '1', '1', '0');
+INSERT INTO TransactionType VALUES('TTYPE-007','Room Damage Fee', '1', '1', '0');
+INSERT INTO TransactionType VALUES('TTYPE-008','Tech Damage Fee', '1', '1', '0');
+
+/*Insert Data into User Table*/
+INSERT INTO "User" (UserID, UserPassword,UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserAmazonID, UserLibbyID) 
+	VALUES(1, 'Password1','Tina','Jones', '1990-01-01','tinajones@gmail.com','9209188020','123 Main St', 'Sheboygan', '53083', '45', 'U-25609825');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserAmazonID, UserLibbyID) 
+	VALUES(2, 'Password2', 'George','Andrews', '1976-10-15','georginator@gmail.com','9209170743','100 Georgia Ave', 'Sheboygan Falls', '53085', '79853457', 'U-123456');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserAmazonID, UserLibbyID) 
+	VALUES(3, 'Password2', 'Penelope','Philips', '1964-11-30','pphilips@yahoo.com','4146448452','3004 Highland Ave', 'Sheboygan', '53081', '25674', 'U-034523452');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserAmazonID)
+	VALUES(4, 'Password3', 'Maple','Mertings', '1985-06-03','maplemysterytour@yahoo.com','9209186352','8902 Washington Ave', 'Sheboygan', '53083', '968');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode, UserAmazonID)
+	VALUES(5, 'Password4', 'Andrea','Schriber', '1995-04-28','dreascribby@yahoo.com','9209120223','3440 Amazon Dr', '14','Sheboygan', '53083', '34');
+
+INSERT INTO "User" (UserID, UserPassword,UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserAmazonID, UserLibbyID)
+	VALUES(6, 'AmazingTop','Nancy','Zimmer', '1995-12-02','ijustam@gmail.com','9209124444','124 Main St', 'Sheboygan', '53083', '567', 'U-456745');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserLibbyID)
+	VALUES(7, 'pantsyrantsy', 'Alex','Jopher', '1971-08-15','jjalexalex@gmail.com','9209990011','101 Georgia Ave', 'Sheboygan Falls', '53085', 'U-7777777');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode) 
+	VALUES(8, 'FridgePodge', 'Sandra','Shipper', '1964-10-03','hippooooo@yahoo.com','4144445220','3005 Highland Ave', 'Sheboygan', '53081');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress, UserCity, UserZipCode, UserLibbyID)
+	VALUES(9, 'De98dhfjgdg', 'Frita','Smith', '1985-02-02','homewardbound@yahoo.com','9206652233','8903 Washington Ave', 'Sheboygan', '53083', 'U-423563454');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode)
+	VALUES(10, 'mandamandamanda4', 'Amanda','Moody', '1992-11-28','pumpkinpie@yahoo.com','9209603660','3441 Amazon Dr', '14','Sheboygan', '53083');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode, UserAmazonID, UserLibbyID)
+	VALUES(11, 'fefemama2!', 'Jeff','Schumer', '1990-03-23','bigpastapapa@yahoo.com','9207545445','822 Freeway Rd', '01','Sheboygan', '53081', '23464', 'U-3546264');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode)
+	VALUES(12, 'wordpassword3', 'Tilly','Schumer', '1990-03-23','dramababy1@yahoo.com','9207545446','822 Freeway Rd', '01','Sheboygan', '53081');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode, UserAmazonID)
+	VALUES(13, 'didIask55', 'Anthony','Schumer', '1998-01-13','idgamister@yahoo.com','9202306020','822 Freeway Rd', '01','Sheboygan', '53081', '234');
+
+INSERT INTO "User" (UserID, UserPassword, UserFirstName,UserLastName,UserDOB,UserEmail,UserPhone,UserStreetAddress,UserAptNo, UserCity, UserZipCode, UserLibbyID)
+	VALUES(14, 'didIask55', 'Sam','Schumer', '1952-06-13','beerbabes&brewskies@yahoo.com','9206667666','822 Freeway Rd', '01','Sheboygan', '53081', 'U-34459999');
+
+/*Insert Data into Receipt Table*/
+INSERT INTO Receipt VALUES(1, '2022-11-23 20:36:45:857', '15.00', 1);
+INSERT INTO Receipt VALUES(2, '2022-11-23 20:36:45:857', '15.00', 1);
+INSERT INTO Receipt VALUES(3, '2022-11-23 20:36:45:860', '18.00', 1);
+INSERT INTO Receipt VALUES(4, '2022-11-23 20:36:45:860', '16.80', 4);
+INSERT INTO Receipt VALUES(5, '2022-11-23 20:36:45:860', '23.40', 4);
+INSERT INTO Receipt VALUES(6, '2022-11-23 20:36:45:860', '6.00', 6);
+INSERT INTO Receipt VALUES(7, '2022-11-23 20:36:45:860', '6.00', 7);
+INSERT INTO Receipt VALUES(8, '2022-11-23 20:36:45:863', '6.00', 8);
+INSERT INTO Receipt VALUES(9, '2022-11-23 20:36:45:863', '60.00', 9);
+INSERT INTO Receipt VALUES(10, '2022-11-23 20:36:45:863', '60.00', 10);
+INSERT INTO Receipt VALUES(11, '2022-11-23 20:36:45:863', '0.00', 12);
+INSERT INTO Receipt VALUES(12, '2022-11-23 20:36:45:867', '0.00', 13);
+INSERT INTO Receipt VALUES(13, '2022-11-23 20:36:45:867', '0.00', 2);
+INSERT INTO Receipt VALUES(14, '2022-11-23 20:36:45:867', '0.00', 3);
+INSERT INTO Receipt VALUES(15, '2022-11-23 20:36:45:867', '0.00', 4);
+INSERT INTO Receipt VALUES(16, '2022-11-23 20:36:45:870', '0.11', 5);
+INSERT INTO Receipt VALUES(17, '2022-11-23 20:36:45:870', '0.60', 6);
+INSERT INTO Receipt VALUES(18, '2022-11-23 20:36:45:870', '0.05', 7);
+INSERT INTO Receipt VALUES(19, '2022-11-23 20:36:45:870', '0.32', 8);
+INSERT INTO Receipt VALUES(20, '2022-11-23 20:36:45:870', '1.00', 9);
+INSERT INTO Receipt VALUES(22, '2022-11-23 20:36:45:873', '30.00', 10);
+INSERT INTO Receipt VALUES(23, '2022-11-23 20:36:45:873', '10.00', 11);
+INSERT INTO Receipt VALUES(24, '2022-11-23 20:36:45:873', '10.00', 12);
+INSERT INTO Receipt VALUES(25, '2022-11-23 20:36:45:873', '0.30', 14);
+INSERT INTO Receipt VALUES(26, '2022-11-23 20:36:45:877', '2.25', 3);
+INSERT INTO Receipt VALUES(27, '2022-11-23 20:36:45:877', '2.10', 8);
+INSERT INTO Receipt VALUES(28, '2022-11-23 20:36:45:877', '0.30', 7);
+INSERT INTO Receipt VALUES(29, '2022-11-23 20:36:45:880', '1.50', 6);
+INSERT INTO Receipt VALUES(30, '2022-11-23 20:36:45:880', '120.00', 1);
+INSERT INTO Receipt VALUES(31, '2022-11-23 20:36:45:880', '75.00', 4);
+INSERT INTO Receipt VALUES(32, '2022-11-23 20:36:45:880', '6.50', 1);
+INSERT INTO Receipt VALUES(33, '2022-11-23 20:36:45:880', '10.00', 1);
+INSERT INTO Receipt VALUES(34, '2022-11-23 20:36:45:883', '17.00', 4);
+
+/*Insert data into Receipt Transaction Table*/
+-- room reservations
+INSERT INTO ReceiptTransaction VALUES(1, 3, 32, '1', '9.00', 1);
+INSERT INTO ReceiptTransaction VALUES(2, 3, 33, '1', '9.00', 2);
+INSERT INTO ReceiptTransaction VALUES(3, 3, 34, '1', '12.00', 3);
+INSERT INTO ReceiptTransaction VALUES(4, 3, 35, '1', '15.00', 4);
+INSERT INTO ReceiptTransaction VALUES(5, 3, 36, '1', '18.00', 5);
+INSERT INTO ReceiptTransaction VALUES(6, 3, 37, '1', '6.00', 6);
+INSERT INTO ReceiptTransaction VALUES(7, 3, 38, '1', '6.00', 7);
+INSERT INTO ReceiptTransaction VALUES(8, 3, 39, '1', '6.00', 8);
+INSERT INTO ReceiptTransaction VALUES(9, 3, 40, '1', '60.00', 9);
+INSERT INTO ReceiptTransaction VALUES(10, 3, 41, '1', '60.00', 10);
+-- tech reservations
+INSERT INTO ReceiptTransaction VALUES(11, 4, 42, '1', '3.00', 1);
+INSERT INTO ReceiptTransaction VALUES(12, 4, 43, '1', '3.00', 2);
+INSERT INTO ReceiptTransaction VALUES(13, 4, 44, '1', '3.00', 3);
+INSERT INTO ReceiptTransaction VALUES(14, 4, 45, '1', '1.80', 4);
+INSERT INTO ReceiptTransaction VALUES(15, 4, 46, '1', '3.00', 5);
+INSERT INTO ReceiptTransaction VALUES(16, 4, 47, '1', '3.00', 1);
+INSERT INTO ReceiptTransaction VALUES(17, 4, 48, '1', '3.00', 2);
+INSERT INTO ReceiptTransaction VALUES(18, 4, 49, '1', '3.00', 3);
+INSERT INTO ReceiptTransaction VALUES(19, 4, 50, '1', '2.40', 4);
+INSERT INTO ReceiptTransaction VALUES(20, 4, 51, '1', '2.40', 5);
+--book loans
+INSERT INTO ReceiptTransaction VALUES(21, 1, 11, '1', '0.00', 11);
+INSERT INTO ReceiptTransaction VALUES(22, 1, 12, '1', '0.00', 11);
+INSERT INTO ReceiptTransaction VALUES(23, 1, 13, '1', '0.00', 12);
+INSERT INTO ReceiptTransaction VALUES(24, 1, 14, '1', '0.00', 12);
+-- cd loans
+INSERT INTO ReceiptTransaction VALUES(25, 1, 28, '1', '0.00', 11);
+INSERT INTO ReceiptTransaction VALUES(26, 1, 29, '1', '0.00', 13);
+INSERT INTO ReceiptTransaction VALUES(27, 1, 30, '1', '0.00', 14);
+INSERT INTO ReceiptTransaction VALUES(28, 1, 31, '1', '0.00', 15);
+-- services
+INSERT INTO ReceiptTransaction VALUES(29, 5, 1, '11', '0.11', 16);
+INSERT INTO ReceiptTransaction VALUES(30, 5, 2, '30', '0.60', 17);
+INSERT INTO ReceiptTransaction VALUES(31, 5, 3, '5', '0.05', 18);
+INSERT INTO ReceiptTransaction VALUES(32, 5, 4, '16', '0.32', 19);
+INSERT INTO ReceiptTransaction VALUES(33, 5, 5, '20', '1.00', 20);
+-- purchases
+INSERT INTO ReceiptTransaction VALUES(34, 2, 23, '1', '10.00', 21);
+INSERT INTO ReceiptTransaction VALUES(35, 2, 24, '1', '10.00', 21);
+INSERT INTO ReceiptTransaction VALUES(36, 2, 25, '1', '10.00', 21);
+INSERT INTO ReceiptTransaction VALUES(37, 2, 26, '1', '10.00', 22);
+INSERT INTO ReceiptTransaction VALUES(38, 2, 27, '1', '15.00', 23);
+-- late fees
+INSERT INTO ReceiptTransaction VALUES(39, 6, 16, '2', '0.30', 24);
+INSERT INTO ReceiptTransaction VALUES(40, 6, 17, '15', '2.25', 25);
+INSERT INTO ReceiptTransaction VALUES(41, 6, 18, '14', '2.10', 26);
+INSERT INTO ReceiptTransaction VALUES(42, 6, 19, '2', '0.30', 27);
+INSERT INTO ReceiptTransaction VALUES(43, 6, 20, '10', '1.50', 28);
+-- room damage fee
+INSERT INTO ReceiptTransaction VALUES(44, 7, 1, '1', '50.00', 29);
+INSERT INTO ReceiptTransaction VALUES(45, 7, 2, '1', '25.00', 29);
+INSERT INTO ReceiptTransaction VALUES(46, 7, 3, '1', '45.00', 29);
+INSERT INTO ReceiptTransaction VALUES(47, 7, 4, '1', '35.00', 30);
+INSERT INTO ReceiptTransaction VALUES(48, 7, 5, '1', '40.00', 30);
+-- tech damage fee
+INSERT INTO ReceiptTransaction VALUES(49, 8, 42, '1', '4.00', 31);
+INSERT INTO ReceiptTransaction VALUES(50, 8, 43, '1', '2.50', 31);
+INSERT INTO ReceiptTransaction VALUES(51, 8, 44, '1', '10.00', 32);
+INSERT INTO ReceiptTransaction VALUES(52, 8, 45, '1', '12.00', 33);
+INSERT INTO ReceiptTransaction VALUES(53, 8, 46, '1', '5.00', 33);
+
+/*Insert data into Reservation Detail Table*/
+INSERT INTO ReservationDetail VALUES(1, '1', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(2, '2', '2022-10-18', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(3, '3', '2022-10-19', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(4, '4', '2022-10-20', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(5, '5', '2022-10-21', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(6, '6', '2022-10-24', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(7, '7', '2022-10-25', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(8, '8', '2022-10-26', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(9, '9', '2022-10-27', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(10, '10', '2022-10-28', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(11, '11', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(12, '12', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(13, '13', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(14, '14', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(15, '15', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(16, '16', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(17, '17', '2022-10-17', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(18, '18', '2022-10-18', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(19, '19', '2022-10-19', '08:30:00','09:30:00');
+INSERT INTO ReservationDetail VALUES(20, '20', '2022-10-20', '08:30:00','09:30:00');
+
+/*Insert Data into Room Detail Table*/
+INSERT INTO RoomDetail VALUES(1, 32, '1', '1', '2', '2', '3', '3', '30', '0.15', '480');
+INSERT INTO RoomDetail VALUES(2, 33, '1', '2', '2', '2', '3', '3', '30', '0.15', '480');
+INSERT INTO RoomDetail VALUES(3, 34, '1', '3', '0', '15', '16', '16', '50', '0.20', '480');
+INSERT INTO RoomDetail VALUES(4, 35, '1', '4', '0', '15', '16', '16', '60', '0.25', '480');
+INSERT INTO RoomDetail VALUES(5, 36, '2', '1', '0', '15', '3', '16', '75', '0.30', '480');
+INSERT INTO RoomDetail VALUES(6, 37, '2', '2', '1', '0', '1', '6', '10', '0.10', '480');
+INSERT INTO RoomDetail VALUES(7, 38, '2', '3', '1', '0', '1', '6', '10', '0.10', '480');
+INSERT INTO RoomDetail VALUES(8, 39, '2', '4', '1', '0', '1', '6', '10', '0.10', '480');
+INSERT INTO RoomDetail VALUES(9, 40, '3', '1', '1', '1', '0', '30', '200', '1.00', '240');
+INSERT INTO RoomDetail VALUES(10, 41, '3', '2', '1', '15', '16', '16', '200', '1.00', '480');
+
+/*Insert Data into TotalRoomReservationsByRoomByWeek Table*/
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(43, 32, 1, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(43, 33, 2, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(43, 34, 3, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(43, 35, 4, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(43, 36, 5, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(44, 37, 6, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(44, 38, 7, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(44, 39, 8, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(44, 40, 9, 1)
+INSERT INTO TotalRoomReservationsByRoomByWeek VALUES(44, 41, 10, 1)
+
+/*Insert Data from External Sources*/
+
+/*Insert External Amazon Data into Item Table*/
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('The Light We Carry: Overcoming in Uncertain Times', '23456');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('It Starts with Us', '23457');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Faith Still Moves Mountains: Miraculous Stories of the Healing Power of Prayer', '16389');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('It Ends with Us', '486436766');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Friends, Lovers, and the Big Terrible Thing: A Memoir', '68565456');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Diper Overlode (Diary of a Wimpy Kid Book 17)', '56456');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Interesting Facts For Curious Minds: 1572 Random But Mind-Blowing Facts About History, Science, Pop Culture And Everything In Between', '456767');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('How to Draw 101 Cute Stuff', '3453455');
+INSERT INTO Item (ItemName, ItemAmazonID, ItemLibbyID) VALUES('Where the Crawdads Sing', '4545664', 'I-34262564563456');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('The Boys From Biloxi: A Legal Thriller', '98708');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Real Simple: November 2022', '14536');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Reader''s Digest: October 2022', '2435');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Food Network Magazine: September 2022', '46523423');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Real Simple: September 2022', '565623');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Better Homes & Gardens: June 2022', '344556');
+INSERT INTO Item (ItemName, ItemAmazonID) VALUES('Better Homes & Gardens: June 2022', '344556');
+
+/*Insert External Amazon Data into Receipt Table*/
+INSERT INTO Receipt VALUES('2345234523450', '2022-06-02', '15.00', 1);
+INSERT INTO Receipt VALUES('2345234523451', '2022-06-14', '40.00', 3);
+INSERT INTO Receipt VALUES('2345234523452', '2022-09-04', '25.00', 5);
+INSERT INTO Receipt VALUES('2345234523453', '2022-09-25', '25.00', 2);
+INSERT INTO Receipt VALUES('2345234523454', '2022-10-17', '25.00', 4);
+INSERT INTO Receipt VALUES('2345234523456', '2022-11-01', '35.00', 5);
+INSERT INTO Receipt VALUES('2345234523457', '2022-11-02', '20.00', 1);
+INSERT INTO Receipt VALUES('2345234523458', '2022-11-10', '15.25', 1);
+INSERT INTO Receipt VALUES('2345234523459', '2022-11-11', '10.00', 4);
+INSERT INTO Receipt VALUES('2345234523460', '2022-11-11', '15.00', 13);
+INSERT INTO Receipt VALUES('2345234523461', '2022-11-11', '25.00', 11);
+INSERT INTO Receipt VALUES('2345234523462', '2022-11-12', '50.00', 6);
+INSERT INTO Receipt VALUES('2345234523463', '2022-11-13', '40.00', 5);
+INSERT INTO Receipt VALUES('2345234523464', '2022-11-15', '35.00', 3);
+INSERT INTO Receipt VALUES('2345234523465', '2022-11-19', '20.00', 4);
+INSERT INTO Receipt VALUES('2345234523466', '2022-11-19', '15.25', 1);
+
+/*Insert External Amazon Data into Receipt Transaction Table*/
+INSERT INTO ReceiptTransaction VALUES ('2345234523466', 2, 52, 1, '15.25', 34);
+INSERT INTO ReceiptTransaction VALUES ('2345234523465', 2, 53, 1, '20.00', 35);
+INSERT INTO ReceiptTransaction VALUES ('2345234523464', 2, 54, 1, '35.00', 36);
+INSERT INTO ReceiptTransaction VALUES ('2345234523463', 2, 55, 1, '40.00', 37);
+INSERT INTO ReceiptTransaction VALUES ('2345234523462', 2, 56, 1, '50.00', 38);
+INSERT INTO ReceiptTransaction VALUES ('2345234523461', 2, 57, 1, '25.00', 39);
+INSERT INTO ReceiptTransaction VALUES ('2345234523460', 2, 58, 1, '15.00', 40);
+INSERT INTO ReceiptTransaction VALUES ('2345234523459', 2, 59, 1, '10.00', 41);
+INSERT INTO ReceiptTransaction VALUES ('2345234523458', 2, 60, 1, '15.25', 42);
+INSERT INTO ReceiptTransaction VALUES ('2345234523457', 2, 61, 1, '20.00', 43);
+INSERT INTO ReceiptTransaction VALUES ('2345234523456', 2, 62, 1, '35.00', 44);
+INSERT INTO ReceiptTransaction VALUES ('2345234523454', 2, 63, 1, '25.00', 45);
+INSERT INTO ReceiptTransaction VALUES ('2345234523453', 2, 64, 1, '25.00', 46);
+INSERT INTO ReceiptTransaction VALUES ('2345234523452', 2, 65, 1, '25.00', 47);
+INSERT INTO ReceiptTransaction VALUES ('2345234523451', 2, 66, 1, '40.00', 48);
+INSERT INTO ReceiptTransaction VALUES ('2345234523450', 2, 67, 1, '15.00', 49);
+
+/*Insert External Libby Data into Item Table*/
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('How to Catch a Turkey', 'I-34262564563458');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('The Book of Unusual Knowledge', 'I-34262564563459');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Go-To Dinners: A Barefoot Contessa Cookbook', 'I-34262564563460');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Lessons in Chemistry: A Novel', 'I-34262564563461');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Little Blue Truck''s Christmas', 'I-34262564563462');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('I''m Glad My Mom Died', 'I-34262564563463');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Polar Express 30th Anniversary Edition', 'I-34262564563464');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Brown Bear, Brown Bear, What Do You See?', 'I-34262564563465');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('National Geographic Kids - July 22', 'I-34262564563466');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Country Living - August 22', 'I-34262564563467');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Highlights for Children - September 22', 'I-34262564563468');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Food & Wine - November 22', 'I-34262564563469');
+INSERT INTO Item (ItemName, ItemLibbyID) VALUES('Entrepreneur - January 22', 'I-34262564563470');
+
+/*Insert External Libby Data into Receipt Table*/
+INSERT INTO Receipt VALUES('TID-345345', NULL, '0.00', 1);
+INSERT INTO Receipt VALUES('TID-345346', NULL, '0.00', 6);
+INSERT INTO Receipt VALUES('TID-345347', NULL, '0.00', 1);
+INSERT INTO Receipt VALUES('TID-345348', NULL, '0.00', 3);
+INSERT INTO Receipt VALUES('TID-345349', NULL, '0.00', 2);
+INSERT INTO Receipt VALUES('TID-345350', NULL, '0.00', 11);
+INSERT INTO Receipt VALUES('TID-345351', NULL, '0.00', 2);
+INSERT INTO Receipt VALUES('TID-345352', NULL, '0.00', 3);
+INSERT INTO Receipt VALUES('TID-345353', NULL, '0.00', 11);
+INSERT INTO Receipt VALUES('TID-345354', NULL, '0.00', 7);
+INSERT INTO Receipt VALUES('TID-345355', NULL, '0.00', 3);
+INSERT INTO Receipt VALUES('TID-345356', NULL, '0.00', 7);
+INSERT INTO Receipt VALUES('TID-345357', NULL, '0.00', 9);
+INSERT INTO Receipt VALUES('TID-345358', NULL, '0.00', 14);
+INSERT INTO Receipt VALUES('TID-345359', NULL, '0.00', 11);
+
+/*Insert External Libby Data into Receipt Transaction Table*/
+INSERT INTO ReceiptTransaction VALUES('TID-345345', 1, 60, '1', '0.00', 50);
+INSERT INTO ReceiptTransaction VALUES('TID-345346', 1, 20, '1', '0.00', 51);
+INSERT INTO ReceiptTransaction VALUES('TID-345347', 1, 68, '1', '0.00', 52);
+INSERT INTO ReceiptTransaction VALUES('TID-345348', 1, 69, '1', '0.00', 53);
+INSERT INTO ReceiptTransaction VALUES('TID-345349', 1, 70, '1', '0.00', 54);
+INSERT INTO ReceiptTransaction VALUES('TID-345350', 1, 71, '1', '0.00', 55);
+INSERT INTO ReceiptTransaction VALUES('TID-345351', 1, 72, '1', '0.00', 56);
+INSERT INTO ReceiptTransaction VALUES('TID-345352', 1, 73, '1', '0.00', 57);
+INSERT INTO ReceiptTransaction VALUES('TID-345353', 1, 74, '1', '0.00', 58);
+INSERT INTO ReceiptTransaction VALUES('TID-345354', 1, 75, '1', '0.00', 59);
+INSERT INTO ReceiptTransaction VALUES('TID-345355', 1, 76, '1', '0.00', 60);
+INSERT INTO ReceiptTransaction VALUES('TID-345356', 1, 77, '1', '0.00', 61);
+INSERT INTO ReceiptTransaction VALUES('TID-345357', 1, 78, '1', '0.00', 62);
+INSERT INTO ReceiptTransaction VALUES('TID-345358', 1, 79, '1', '0.00', 63);
+INSERT INTO ReceiptTransaction VALUES('TID-345359', 1, 80, '1', '0.00', 64);
+
+/*Insert Data from External Source into TotalUserFeesByMonth Table*/
+INSERT INTO TotalUserFeesByMonth VALUES( 1, 'November', '2022', '235.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 2, 'June', '2022', '15.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 2, 'September', '2022', '25.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 3, 'June', '2022', '40.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 3, 'November', '2022', '17.25');
+INSERT INTO TotalUserFeesByMonth VALUES( 4, 'October', '2022', '25.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 4, 'September', '2022', '162.20');
+INSERT INTO TotalUserFeesByMonth VALUES( 5, 'November', '2022', '25.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 5, 'November', '2022', '75.11');
+INSERT INTO TotalUserFeesByMonth VALUES( 6, 'November', '2022', '58.10');
+INSERT INTO TotalUserFeesByMonth VALUES( 7, 'November', '2022', '6.35');
+INSERT INTO TotalUserFeesByMonth VALUES( 8, 'November', '2022', '8.42');
+INSERT INTO TotalUserFeesByMonth VALUES( 9, 'November', '2022', '61.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 10, 'November', '2022', '90.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 11, 'November', '2022', '35.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 12, 'November', '2022', '10.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 13, 'November', '2022', '15.00');
+INSERT INTO TotalUserFeesByMonth VALUES( 14, 'November', '2022', '0.30');
